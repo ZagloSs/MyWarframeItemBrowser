@@ -4,13 +4,17 @@ from collections import defaultdict
 import re
 import json
 import streamlit as st
+import pandas as pd
 
-URL = "https://warframe-web-assets.nyc3.cdn.digitaloceanspaces.com/uploads/cms/hnfvc0o3jnfvc873njb03enrf56.html"  # <-- PUT YOUR REAL URL HERE
+URL = "https://warframe.com/droptables"  # <-- PUT YOUR REAL URL HERE
 
 # -------------------------
 # FETCH PAGE
 # -------------------------
 st.text("Fetching data")
+st.set_page_config(page_title="Wareframe W2F Tool")
+
+
 response = requests.get(URL)
 soup = BeautifulSoup(response.text, "lxml")
 
@@ -143,7 +147,7 @@ def search_item(item, depth=0):
         # -------------------------
         if d["source_type"] == "mission":
             output.append(
-                f'{indent}{item} → Mission: {d["source_name"]} | Rotation {subtype} | {d["rarity"]}'
+                d
             )
 
         # -------------------------
@@ -152,28 +156,14 @@ def search_item(item, depth=0):
         elif d["source_type"] == "relic":
             relic_name = d["source_name"]
 
-            output.append(
-                f'{indent}{item} → Relic: {relic_name} ({subtype}) | {d["rarity"]}'
-            )
-
-            # 🔍 Find where the relic drops
             relic_drops = item_index.get(relic_name, [])
 
-            # 🚫 IMPORTANT: only show relic if it has mission sources
             mission_drops = [rd for rd in relic_drops if rd["source_type"] == "mission"]
+            if mission_drops:
+                output.append(d)
 
-            if not mission_drops:
-                continue  # ❗ skip relic entirely if it has no mission drops
-
-            output.append(f'{indent}  ↳ {relic_name} drops in:')
-
-            for rd in mission_drops:
-                sub = rd["subtype"] if rd["subtype"] else "Unknown"
-
-                output.append(
-                    f'{indent}    - Mission: {rd["source_name"]} | Rotation {sub} | {rd["rarity"]}'
-                )
-
+    if not output:
+        output.append("All Relics for this item has been vaulted :(")
     return output
 
 
@@ -213,15 +203,64 @@ with open("warframe_data.json", "w", encoding="utf-8") as f:
 #     print(r)
 
 hey = st.text("")
-st.title("MyWarframeBrowser")
+st.title("Warframe W2F Tool")
 
-st.text("This is a Warframe item drop checker, its based on the information from the offical droptables, it might be a little slow but it works in real time")
+st.text("This my Warframe Where To Farm tool, its based on the information from the offical droptables, it might be a little slow but it works in real time")
 
+
+def all_same_source_type(data):
+    values = {d.get("source_type") for d in data}
+
+    if values == {"mission"}:
+        return 1
+    elif values == {"relic"}:
+        return 2
+    else:
+        return 0
+    
 stitem = st.text_input("Enter your item's name")
-
 results = search_item(stitem)
 
-if results:
-    for r in results: 
-        st.text(r)
+if stitem:
+    searchType = all_same_source_type(results)
+    if searchType == 1 :
+        df = pd.DataFrame(results)
+        df = df.drop(columns="item")
+        df = df.rename(columns={
+            "source_type": "Source",
+            "source_name": "Name",
+            "subtype": "Rotation",
+
+        })
+        st.table(data = df)
+
+    elif searchType == 2:
+        df = pd.DataFrame(results)
+        df = df.drop(columns="item")
+        df = df.rename(columns={
+            "source_type": "Source",
+            "source_name": "Relic Name",
+            "subtype": "Refinement",
+
+        })
+        st.table(data = df)
+
+        st.text("Where to find this relic: ")
+        findRelic = search_item(df.loc[0]["Relic Name"])
+        
+        newDf = pd.DataFrame(findRelic)
+        newDf = newDf.drop(columns="item")
+        newDf = newDf.rename(columns={
+            "source_type": "Source",
+            "source_name": "Name",
+            "subtype": "Rotation",
+
+        })
+        st.table(data = newDf)
+
+
+    elif searchType == 0:
+        st.table(data = pd.DataFrame(results))
+
+
 
